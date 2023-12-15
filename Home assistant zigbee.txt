@@ -1,0 +1,68 @@
+version: '3'
+services:
+  homeassistant:
+    container_name: homeassistant
+    image: "ghcr.io/home-assistant/home-assistant:latest"
+    volumes:
+      - ./hassio/config:/config
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
+    ports:
+      - 8123:8123
+    labels:
+      - "traefik.http.routers.hassio.rule=${HOSTNAMES}"
+      - "traefik.http.routers.hassio.entrypoints=web"
+
+      # Redirect to HTTPS
+      - "traefik.http.routers.hassio.middlewares=nextcloud-https"
+      - "traefik.http.middlewares.hassio-https.redirectscheme.scheme=https"
+
+      - "traefik.http.routers.hassio-https.rule=${HOSTNAMES}"
+      - "traefik.http.routers.hassio-https.entrypoints=websecure"
+      - "traefik.http.routers.hassio-https.tls=true"
+      - "traefik.http.routers.hassio-https.tls.certresolver=myresolver"
+
+      - traefik.http.services.hassio.loadbalancer.server.port=8123
+
+      - "traefik.http.routers.hassio-https.middlewares=hassio-secured"
+      - "traefik.http.middlewares.hassio-secured.chain.middlewares=cloudflare@file"
+
+  mosquitto:
+    image: eclipse-mosquitto
+    restart: unless-stopped
+    ports:
+      - 1883:1883
+      - 9001:9001
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:rw
+      - ./mosquitto/data:/mosquitto/data:rw
+      - ./mosquitto/log:/mosquitto/log:rw
+
+  zigbee2mqtt:
+      container_name: zigbee2mqtt
+      image: koenkk/zigbee2mqtt
+      restart: unless-stopped
+      volumes:
+        - ./z2m/data:/app/data
+        - /run/udev:/run/udev:ro
+      environment:
+        - TZ=Europe/Brussels
+      devices:
+        - /dev/ttyACM0:/dev/ttyACM0
+      labels:
+        - "traefik.http.routers.z2m.rule=Host(`TONDOMAIN`)"
+        - "traefik.http.routers.z2m.entrypoints=web"
+
+        # Redirect to HTTPS
+        - "traefik.http.routers.z2m.middlewares=nextcloud-https"
+        - "traefik.http.middlewares.z2m-https.redirectscheme.scheme=https"
+
+        - "traefik.http.routers.z2m-https.rule=Host(`TONDOMAIN`)"
+        - "traefik.http.routers.z2m-https.entrypoints=websecure"
+        - "traefik.http.routers.z2m-https.tls=true"
+        - "traefik.http.routers.z2m-https.tls.certresolver=myresolver"
+
+        - traefik.http.services.z2m.loadbalancer.server.port=8080
+
+        - "traefik.http.routers.z2m-https.middlewares=z2m-secured"
+        - "traefik.http.middlewares.z2m-secured.chain.middlewares=cloudflare@file"
